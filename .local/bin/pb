@@ -1,0 +1,132 @@
+#!/bin/bash
+
+# A wrapper script for Restic to manage backups for the current project directory.
+#
+# Usage:
+# 1. Save this script as 'pb' in a directory in your $PATH (e.g., ~/bin).
+# 2. Make it executable: chmod +x ~/bin/pb
+# 3. cd into your project directory and run commands.
+
+set -e
+set -o pipefail
+
+# --- Configuration ---
+# The parent directory where all project backup repositories will be stored.
+BACKUP_PARENT_DIR="${HOME}/backup"
+
+# --- Helper Functions ---
+usage() {
+  echo "Usage: $(basename "$0") <command> [args...]"
+  echo
+  echo "A wrapper for Restic to manage backups for the current project."
+  echo
+  echo "Commands:"
+  echo "  init                Initialize a new backup repository for this project."
+  echo "  backup [path...]    Create a new snapshot. Backs up '.' if no path is given."
+  echo "  recover             Interactive SNAFU recovery. Snapshots the current"
+  echo "                      state as 'broken', wipes the directory, and restores"
+  echo "                      the last known-good snapshot."
+  echo "  purge-broken        Remove all snapshots tagged as 'broken'."
+  echo "  <other>             Any other command is passed directly to restic."
+  echo "                      (e.g., snapshots, forget, prune, diff, restore)"
+}
+
+# --- Pre-flight Checks ---
+# Check for required commands
+if ! command -v restic &>/dev/null; then
+  echo "Error: 'restic' command not found. Please install it." >&2
+  exit 1
+fi
+
+# Show usage if no command is given or help is requested
+if [[ -z "$1" || "$1" == "-h" || "$1" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+# --- Main Logic ---
+# Define repository path based on the current directory's name
+project_name=$(basename "$PWD")
+backup_repo_path="${BACKUP_PARENT_DIR}/${project_name}-snapshots"
+
+# Ensure the repo path exists for all commands except 'init'
+if [[ "$1" != "init" && ! -d "${backup_repo_path}" ]]; then
+  echo "Error: Backup repository not found at ${backup_repo_path}" >&2
+  echo "Please run '$(basename "$0") init' first." >&2
+  exit 1
+fi
+
+# Command dispatcher
+case "$1" in
+init)
+  # Create the parent backup directory if it doesn't exist
+  mkdir -p "${BACKUP_PARENT_DIR}"
+  # Initialize the repository
+  restic init --insecure-no-password --repo "${backup_repo_path}"
+  ;;
+
+backup)
+  shift # remove 'backup' from args
+  backup_paths=("${@}")
+  # Default to backing up the current directory if no paths are provided
+  if [[ ${#backup_paths[@]} -eq 0 ]]; then
+    backup_paths=(".")
+  fi
+  restic --insecure-no-password --repo "${backup_repo_path}" backup "${backup_paths[@]}"
+  ;;
+
+recover)
+  # Check for jq dependency specifically for this command
+  if ! command -v jq &>/dev/null; then
+    echo "Error: 'jq' command not found. It is required for the 'recover' command." >&2
+    exit 1
+  fi
+
+  echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+  echo "This will snapshot the current state as 'broken', then COMPLETELY"
+  echo "WIPE the current directory, and restore the last known-good snapshot."
+  echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+  read -p "Are you absolutely sure you want to do this? Type 'yes': " -r
+  echo # Move to a new line
+
+  if [[ "$REPLY" != "yes" ]]; then
+    echo "Recovery aborted."
+    exit 1
+  fi
+
+  echo "==> Step 1: Snapshotting current broken state with tag 'broken'..."
+  restic --insecure-no-password --repo "${backup_repo_path}" backup . --tag broken
+
+  echo "==> Step 2: Finding the latest snapshot without the 'broken' tag..."
+  # Use jq to safely parse the JSON output and find the last snapshot
+  # that does NOT have the 'broken' tag.
+  latest_good_id=$(
+    restic --insecure-no-password --repo "${backup_repo_path}" snapshots --json |
+      jq -r '[.[] | select(.tags | index("broken") | not)][-1].short_id'
+  )
+
+  if [[ -z "${latest_good_id}" || "${latest_good_id}" == "null" ]]; then
+    echo "Error: Could not find a valid, non-broken snapshot to restore." >&2
+    exit 1
+  fi
+  echo "Found good snapshot to restore: ${latest_good_id}"
+
+  echo "==> Step 3: Wiping current directory..."
+  find . -mindepth 1 -delete
+
+  echo "==> Step 4: Restoring snapshot ${latest_good_id}..."
+  restic --insecure-no-password --repo "${backup_repo_path}" restore "${latest_good_id}" --target .
+
+  echo "Recovery complete."
+  ;;
+
+purge-broken)
+  echo "==> Removing all snapshots tagged as 'broken'..."
+  restic --insecure-no-password --repo "${backup_repo_path}" forget --tag broken --prune --group-by tags
+  ;;
+
+*)
+  # Pass any other command directly to restic
+  restic --insecure-no-password --repo "${backup_repo_path}" "$@"
+  ;;
+esac
