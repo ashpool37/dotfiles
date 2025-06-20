@@ -2,7 +2,7 @@
 
 export PS1=" \$ \h:\W> "
 
-export EDITOR="emacsclient -t -a /usr/bin/emacs"
+export EDITOR="mg"
 export VISUAL="$EDITOR"
 alias emacs="$EDITOR"
 alias vim="$EDITOR"

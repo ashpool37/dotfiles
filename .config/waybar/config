@@ -6,7 +6,7 @@
 	// "width": 1366, // Waybar width
 	// Choose the order of the modules
 	"modules-left": ["hyprland/workspaces", "tray", "hyprland/language"],
-	"modules-right": ["pulseaudio#mic", "pulseaudio", "network", "cpu", "memory", "battery", "clock", "group/power"],
+	"modules-right": ["pulseaudio#mic", "pulseaudio", "network", "cpu", "memory", "battery", "custom/world-clock", "clock", "group/power"],
 	"modules-center": ["hyprland/window"],
 	"fixed-center": false,
 	"margin-top": 0,
@@ -17,7 +17,7 @@
 	"hyprland/language": {
 		"format": "{}",
 		"format-en": "En",
-		"format-ru": "Ru",
+		"format-ru": "Ru"
 	},
 	"hyprland/workspaces": {
 		"disable-scroll": true,
@@ -35,10 +35,17 @@
 		"icon-size": 17,
 		"spacing": 10
 	},
+	"custom/world-clock": {
+		"exec": "waybar-world-clock",
+		"return-type": "json",
+		"interval": 60
+	},
 	"clock": {
 		"interval": 5,
 		"format-alt": "{:%Y-%m-%d}",
 		"tooltip-format": "<tt><small>{calendar}</small></tt>",
+		"timezones": ["", "America/Los_Angeles", "America/New_York", "Europe/London",
+			"Etc/UTC", "Asia/Nicosia", "Europe/Moscow", "Europe/Astrakhan", "Asia/Tokyo"],
 		"calendar": {
 							"mode"          : "month",
 							"mode-mon-col"  : 3,
@@ -81,8 +88,8 @@
 		"format-wifi": "{essid} ({signalStrength}%)  ",
 		"format-ethernet": "{ifname}  ",
 		"format-disconnected": "Disconnected ⚠ ",
-		"tooltip-format": "{ipaddr}/{cidr}",
-		"on-click": "hyprctl dispatch exec \"[float] foot -W 80x24 nmtui\""
+		"tooltip-format": "{ipaddr}/{cidr}"
+		// "on-click": "hyprctl dispatch exec \"[float] foot -W 80x24 nmtui\""
 	},
 	"pulseaudio": {
 		"scroll-step": 1,
@@ -114,13 +121,13 @@
 		"drawer": {
 			"transition-duration": 500,
 			"children-class": "not-power",
-			"transition-left-to-right": false,
+			"transition-left-to-right": false
 		},
 		"modules": [
 			"custom/power", // First element is the "group leader" and won't ever be hidden
 			"custom/lock",
 			"custom/exit",
-			"custom/reboot",
+			"custom/reboot"
 		]
 	},
 	"custom/exit": {
